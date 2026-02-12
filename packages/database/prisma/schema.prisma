@@ -1,0 +1,944 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   String    @id @default(cuid())
+  email                String    @unique
+  passwordHash         String?   @map("password_hash")
+  firstName            String?   @map("first_name")
+  lastName             String?   @map("last_name")
+  emailVerified        DateTime? @map("email_verified")
+  emailVerifyToken     String?   @unique @map("email_verify_token")
+  emailVerifyExpires   DateTime? @map("email_verify_expires")
+  passwordResetToken   String?   @unique @map("password_reset_token")
+  passwordResetExpires DateTime? @map("password_reset_expires")
+  image                String?
+  mfaEnabled           Boolean   @default(false) @map("mfa_enabled")
+  mfaSecret            String?   @map("mfa_secret")
+  mfaVerifiedAt        DateTime? @map("mfa_verified_at")
+  passwordChangedAt    DateTime? @map("password_changed_at")
+  lastLoginAt          DateTime? @map("last_login_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  accounts              Account[]
+  sessions              Session[]
+  organizationMembers   OrganizationMember[]
+  workspaceMembers      WorkspaceMember[]
+  sentInvitations       Invitation[]           @relation("InvitedBy")
+  auditLogs             AuditLog[]
+  mfaBackupCodes        MFABackupCode[]
+  userSessions          UserSession[]
+  apiKeysCreated        ApiKey[]               @relation("ApiKeyCreatedBy")
+  assignedConversations Conversation[]         @relation("ConversationAssignedTo")
+  agentMessages         Message[]              @relation("AgentMessages")
+  agentAvailability     AgentAvailability?
+  cannedResponses       CannedResponse[]       @relation("UserCannedResponses")
+  AnalyticsEvent        AnalyticsEvent[]
+  PromptTemplate        PromptTemplate[]
+  PromptVersion         PromptVersion[]
+  QualityFlag           QualityFlag[]
+  DataConsent           DataConsent[]
+  IntegrationActionLog  IntegrationActionLog[]
+
+  @@map("users")
+}
+
+// ==================== BILLING ====================
+
+model Plan {
+  id                   String   @id @default(cuid())
+  name                 String
+  slug                 String   @unique
+  description          String?
+  priceMonthly         Int      @default(0) @map("price_monthly")
+  priceYearly          Int      @default(0) @map("price_yearly")
+  paystackPlanCodeMonthly String?  @map("paystack_plan_code_monthly")
+  paystackPlanCodeYearly  String?  @map("paystack_plan_code_yearly")
+  limits               Json     @default("{}")
+  features             Json     @default("{}")
+  isActive             Boolean  @default(true) @map("is_active")
+  sortOrder            Int      @default(0) @map("sort_order")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  organizations Organization[]
+
+  @@map("plans")
+}
+
+model BillingHistory {
+  id              String   @id @default(cuid())
+  organizationId  String   @map("organization_id")
+  paystackReference String?  @unique @map("paystack_reference")
+  amount          Int
+  currency        String   @default("usd")
+  status          String
+  description     String?
+  invoiceUrl      String?  @map("invoice_url")
+  invoicePdf      String?  @map("invoice_pdf")
+  periodStart     DateTime @map("period_start")
+  periodEnd       DateTime @map("period_end")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@map("billing_history")
+}
+
+// ==================== SECURITY ====================
+
+model SSOConfig {
+  id             String  @id @default(cuid())
+  organizationId String  @unique @map("organization_id")
+  enabled        Boolean @default(false)
+  provider       String // "saml" | "oidc"
+  enforceSSO     Boolean @default(false) @map("enforce_sso")
+
+  // SAML Configuration
+  samlEntryPoint  String? @map("saml_entry_point")
+  samlIssuer      String? @map("saml_issuer")
+  samlCertificate String? @map("saml_certificate") @db.Text
+
+  // OIDC Configuration
+  oidcClientId     String?  @map("oidc_client_id")
+  oidcClientSecret String?  @map("oidc_client_secret")
+  oidcIssuerUrl    String?  @map("oidc_issuer_url")
+  oidcScopes       String[] @default(["openid", "email", "profile"]) @map("oidc_scopes")
+
+  allowedDomains String[]  @default([]) @map("allowed_domains")
+  lastTestedAt   DateTime? @map("last_tested_at")
+  testStatus     String?   @map("test_status")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("sso_configs")
+}
+
+model MFABackupCode {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  code      String // Hashed backup code
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("mfa_backup_codes")
+}
+
+model ApiKey {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  name           String
+  keyHash        String    @unique @map("key_hash")
+  keyPrefix      String    @map("key_prefix")
+  scopes         String[]  @default([])
+  ipWhitelist    String[]  @default([]) @map("ip_whitelist")
+  expiresAt      DateTime? @map("expires_at")
+  lastUsedAt     DateTime? @map("last_used_at")
+  usageCount     Int       @default(0) @map("usage_count")
+  revokedAt      DateTime? @map("revoked_at")
+  createdById    String    @map("created_by_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("ApiKeyCreatedBy", fields: [createdById], references: [id])
+
+  @@index([organizationId])
+  @@map("api_keys")
+}
+
+model UserSession {
+  id           String    @id @default(cuid())
+  userId       String    @map("user_id")
+  sessionToken String    @unique @map("session_token")
+  ipAddress    String?   @map("ip_address")
+  userAgent    String?   @map("user_agent")
+  deviceInfo   Json?     @map("device_info")
+  lastActiveAt DateTime  @default(now()) @map("last_active_at")
+  expiresAt    DateTime  @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_sessions")
+}
+
+model SecurityPolicy {
+  id             String @id @default(cuid())
+  organizationId String @unique @map("organization_id")
+
+  // Password Policy
+  passwordMinLength      Int     @default(8) @map("password_min_length")
+  passwordRequireUpper   Boolean @default(true) @map("password_require_upper")
+  passwordRequireLower   Boolean @default(true) @map("password_require_lower")
+  passwordRequireNumber  Boolean @default(true) @map("password_require_number")
+  passwordRequireSpecial Boolean @default(false) @map("password_require_special")
+
+  // Session Policy
+  sessionTimeoutMinutes Int @default(43200) @map("session_timeout_minutes") // 30 days default
+
+  // MFA Policy
+  mfaRequired      Boolean  @default(false) @map("mfa_required")
+  mfaRequiredRoles String[] @default([]) @map("mfa_required_roles")
+
+  // IP Policy
+  ipWhitelistEnabled Boolean  @default(false) @map("ip_whitelist_enabled")
+  allowedIPs         String[] @default([]) @map("allowed_ips")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("security_policies")
+}
+
+// ==================== MULTI-TENANCY ====================
+
+model Organization {
+  id       String  @id @default(cuid())
+  name     String
+  slug     String  @unique
+  logoUrl  String? @map("logo_url")
+  settings Json    @default("{}")
+
+  // Billing fields
+  planId                String?   @map("plan_id")
+  paystackCustomerCode      String?   @unique @map("paystack_customer_code")
+  paystackSubscriptionCode  String?   @unique @map("paystack_subscription_code")
+  subscriptionStatus    String?   @map("subscription_status")
+  billingInterval       String?   @map("billing_interval")
+  trialEndsAt           DateTime? @map("trial_ends_at")
+  currentPeriodEnd      DateTime? @map("current_period_end")
+  cancelAtPeriodEnd     Boolean   @default(false) @map("cancel_at_period_end")
+  messagesUsedThisMonth Int       @default(0) @map("messages_used_this_month")
+  usageResetAt          DateTime? @map("usage_reset_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  plan                    Plan?                     @relation(fields: [planId], references: [id])
+  billingHistory          BillingHistory[]
+  members                 OrganizationMember[]
+  workspaces              Workspace[]
+  invitations             Invitation[]
+  auditLogs               AuditLog[]
+  ssoConfig               SSOConfig?
+  apiKeys                 ApiKey[]
+  securityPolicy          SecurityPolicy?
+  CannedResponse          CannedResponse[]
+  AnalyticsEvent          AnalyticsEvent[]
+  AnalyticsReportSchedule AnalyticsReportSchedule[]
+  CostUsage               CostUsage[]
+  CompliancePolicy        CompliancePolicy[]
+  DataConsent             DataConsent[]
+  DataRetentionSchedule   DataRetentionSchedule[]
+  Integration             Integration[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  userId         String   @map("user_id")
+  role           String   @default("viewer") // org_admin, workspace_admin, builder, content_manager, analyst, viewer
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("organization_members")
+}
+
+model Invitation {
+  id             String   @id @default(cuid())
+  email          String
+  organizationId String   @map("organization_id")
+  role           String   @default("viewer")
+  token          String   @unique
+  status         String   @default("pending") // pending, accepted, expired, cancelled
+  expiresAt      DateTime @map("expires_at")
+  invitedById    String   @map("invited_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User         @relation("InvitedBy", fields: [invitedById], references: [id])
+
+  @@map("invitations")
+}
+
+model Workspace {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  name           String
+  slug           String
+  description    String?
+  settings       Json     @default("{}")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members              WorkspaceMember[]
+  knowledgeBases       KnowledgeBase[]
+  workflows            Workflow[]
+  chatbots             Chatbot[]
+  AnalyticsEvent       AnalyticsEvent[]
+  PromptTemplate       PromptTemplate[]
+  Integration          Integration[]
+  IntegrationActionLog IntegrationActionLog[]
+
+  @@unique([organizationId, slug])
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String   @id @default(cuid())
+  workspaceId String   @map("workspace_id")
+  userId      String   @map("user_id")
+  role        String   @default("viewer") // workspace_admin, builder, content_manager, analyst, viewer
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  userId         String?  @map("user_id")
+  action         String // e.g., "member.invited", "workspace.created", "settings.updated"
+  resourceType   String?  @map("resource_type")
+  resourceId     String?  @map("resource_id")
+  oldValues      Json?    @map("old_values")
+  newValues      Json?    @map("new_values")
+  ipAddress      String?  @map("ip_address")
+  userAgent      String?  @map("user_agent")
+  isPhi          Boolean? @default(false) @map("is_phi")
+  region         String?  @map("region")
+  incidentType   String?  @map("incident_type")
+  privacyRequest String?  @map("privacy_request")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@map("audit_logs")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ==================== KNOWLEDGE BASE ====================
+
+model KnowledgeBase {
+  id             String   @id @default(cuid())
+  workspaceId    String   @map("workspace_id")
+  name           String
+  description    String?
+  embeddingModel String   @default("text-embedding-3-small") @map("embedding_model")
+  chunkSize      Int      @default(1000) @map("chunk_size")
+  chunkOverlap   Int      @default(200) @map("chunk_overlap")
+  settings       Json     @default("{}")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  documents KBDocument[]
+
+  @@map("knowledge_bases")
+}
+
+model KBDocument {
+  id              String    @id @default(cuid())
+  knowledgeBaseId String    @map("knowledge_base_id")
+  name            String
+  type            String // pdf, docx, txt, md, csv, url
+  status          String    @default("pending") // pending, processing, completed, failed
+  fileSize        Int?      @map("file_size")
+  filePath        String?   @map("file_path")
+  sourceUrl       String?   @map("source_url")
+  rawContent      String?   @map("raw_content") @db.Text
+  errorMessage    String?   @map("error_message")
+  metadata        Json      @default("{}")
+  processedAt     DateTime? @map("processed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  knowledgeBase KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  chunks        KBChunk[]
+
+  @@map("kb_documents")
+}
+
+model KBChunk {
+  id         String   @id @default(cuid())
+  documentId String   @map("document_id")
+  content    String   @db.Text
+  embedding  Json?    @default("[]")
+  chunkIndex Int      @map("chunk_index")
+  tokenCount Int?     @map("token_count")
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  document KBDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("kb_chunks")
+}
+
+// ==================== WORKFLOWS ====================
+
+model Workflow {
+  id          String    @id @default(cuid())
+  workspaceId String    @map("workspace_id")
+  name        String
+  description String?
+  status      String    @default("draft") // draft, published, archived
+  triggerType String    @default("conversation_start") @map("trigger_type") // conversation_start, keyword, intent, api
+  isDefault   Boolean   @default(false) @map("is_default")
+  version     Int       @default(1)
+  publishedAt DateTime? @map("published_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  workspace  Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  nodes      WorkflowNode[]
+  edges      WorkflowEdge[]
+  variables  WorkflowVariable[]
+  versions   WorkflowVersion[]
+  PromptTest PromptTest[]
+
+  @@map("workflows")
+}
+
+model WorkflowNode {
+  id         String   @id @default(cuid())
+  workflowId String   @map("workflow_id")
+  nodeId     String   @map("node_id") // React Flow node ID
+  type       String // start, ai_response, knowledge_lookup, intent_classifier, condition, switch, send_message, buttons, capture_input, set_variable, api_call, human_handoff, end
+  positionX  Float    @map("position_x")
+  positionY  Float    @map("position_y")
+  config     Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, nodeId])
+  @@map("workflow_nodes")
+}
+
+model WorkflowEdge {
+  id           String   @id @default(cuid())
+  workflowId   String   @map("workflow_id")
+  edgeId       String   @map("edge_id") // React Flow edge ID
+  source       String // Source node ID
+  target       String // Target node ID
+  sourceHandle String?  @map("source_handle") // For nodes with multiple outputs
+  label        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, edgeId])
+  @@map("workflow_edges")
+}
+
+model WorkflowVariable {
+  id           String   @id @default(cuid())
+  workflowId   String   @map("workflow_id")
+  name         String
+  type         String // string, number, boolean, array, object
+  defaultValue String?  @map("default_value")
+  description  String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, name])
+  @@map("workflow_variables")
+}
+
+model WorkflowVersion {
+  id          String   @id @default(cuid())
+  workflowId  String   @map("workflow_id")
+  version     Int
+  data        Json // Full snapshot of nodes, edges, variables
+  publishedBy String?  @map("published_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, version])
+  @@map("workflow_versions")
+}
+
+// ==================== CHATBOTS ====================
+
+model Chatbot {
+  id          String  @id @default(cuid())
+  workspaceId String  @map("workspace_id")
+  name        String
+  description String?
+  status      String  @default("draft") // draft, active, paused, archived
+
+  // Persona configuration
+  personaName         String? @map("persona_name")
+  personaRole         String? @map("persona_role")
+  personaTone         String? @map("persona_tone") // professional, friendly, casual, formal
+  personaInstructions String? @map("persona_instructions") @db.Text
+
+  // AI Model settings
+  aiProvider    String @default("openai") @map("ai_provider") // openai, anthropic
+  aiModel       String @default("gpt-4o-mini") @map("ai_model")
+  aiTemperature Float  @default(0.7) @map("ai_temperature")
+  aiMaxTokens   Int    @default(1000) @map("ai_max_tokens")
+
+  // Behavior settings
+  greetingMessage       String? @map("greeting_message") @db.Text
+  fallbackMessage       String? @map("fallback_message") @db.Text
+  handoffMessage        String? @map("handoff_message") @db.Text
+  enableTypingIndicator Boolean @default(true) @map("enable_typing_indicator")
+  responseDelayMs       Int     @default(0) @map("response_delay_ms")
+
+  // Widget configuration (JSON)
+  widgetConfig Json @default("{}") @map("widget_config")
+
+  // Workflow association
+  defaultWorkflowId String? @map("default_workflow_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channels       Channel[]
+  conversations  Conversation[]
+  AnalyticsEvent AnalyticsEvent[]
+  PromptTest     PromptTest[]
+  CostUsage      CostUsage[]
+
+  @@map("chatbots")
+}
+
+model Channel {
+  id            String   @id @default(cuid())
+  chatbotId     String   @map("chatbot_id")
+  type          String // web, whatsapp, messenger, slack, telegram
+  name          String
+  status        String   @default("inactive") // inactive, active, error
+  config        Json     @default("{}")
+  credentials   Json     @default("{}")
+  webhookUrl    String?  @map("webhook_url")
+  webhookSecret String?  @map("webhook_secret")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  chatbot        Chatbot          @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  conversations  Conversation[]
+  AnalyticsEvent AnalyticsEvent[]
+
+  @@unique([chatbotId, type])
+  @@map("channels")
+}
+
+model Conversation {
+  id                  String    @id @default(cuid())
+  chatbotId           String    @map("chatbot_id")
+  channelId           String?   @map("channel_id")
+  sessionId           String    @unique @map("session_id")
+  externalId          String?   @map("external_id") // External platform ID (WhatsApp number, etc.)
+  status              String    @default("active") // active, waiting_for_human, handed_off, closed
+  context             Json      @default("{}") // Execution context (variables, history)
+  currentNodeId       String?   @map("current_node_id")
+  workflowId          String?   @map("workflow_id")
+  metadata            Json      @default("{}") // Visitor metadata (IP, user agent, etc.)
+  assignedToId        String?   @map("assigned_to_id")
+  priority            Int       @default(0)
+  tags                String[]  @default([])
+  firstResponseTimeMs Int?      @map("first_response_time_ms")
+  lastMessageAt       DateTime? @map("last_message_at")
+  closedAt            DateTime? @map("closed_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  chatbot        Chatbot          @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  channel        Channel?         @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  messages       Message[]
+  assignedTo     User?            @relation("ConversationAssignedTo", fields: [assignedToId], references: [id])
+  AnalyticsEvent AnalyticsEvent[]
+  CostUsage      CostUsage[]
+
+  @@index([chatbotId, status])
+  @@index([sessionId])
+  @@index([lastMessageAt])
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String   @map("conversation_id")
+  role           String // user, assistant, system
+  content        String   @db.Text
+  nodeId         String?  @map("node_id") // Workflow node that generated this message
+  aiModel        String?  @map("ai_model")
+  tokenCount     Int?     @map("token_count")
+  latencyMs      Int?     @map("latency_ms")
+  citations      Json     @default("[]") // Knowledge base citations
+  feedbackRating Int?     @map("feedback_rating") // 1-5
+  feedbackText   String?  @map("feedback_text")
+  metadata       Json     @default("{}") // Buttons shown, etc.
+  isFromAgent    Boolean  @default(false) @map("is_from_agent")
+  agentId        String?  @map("agent_id")
+  internalNote   String?  @map("internal_note") @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  agent        User?         @relation("AgentMessages", fields: [agentId], references: [id])
+  QualityFlag  QualityFlag[]
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+model AgentAvailability {
+  id                   String   @id @default(cuid())
+  userId               String   @unique @map("user_id")
+  status               String   @default("offline") // offline, available, busy, away
+  maxConversations     Int      @default(3) @map("max_conversations")
+  currentConversations Int      @default(0) @map("current_conversations")
+  skills               String[] @default([])
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("agent_availability")
+}
+
+model CannedResponse {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  title          String
+  content        String   @db.Text
+  shortcut       String?
+  category       String?
+  createdById    String   @map("created_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("UserCannedResponses", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@map("canned_responses")
+}
+
+model AnalyticsEvent {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  workspaceId    String?  @map("workspace_id")
+  chatbotId      String?  @map("chatbot_id")
+  channelId      String?  @map("channel_id")
+  conversationId String?  @map("conversation_id")
+  userId         String?  @map("user_id")
+  eventType      String   @map("event_type")
+  payload        Json     @default("{}")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  chatbot      Chatbot?      @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  channel      Channel?      @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@map("analytics_events")
+}
+
+model AnalyticsReportSchedule {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  name           String
+  cadence        String // hourly, daily, weekly, monthly
+  filters        Json      @default("{}")
+  format         String    @default("json") // json or csv
+  nextRunAt      DateTime? @map("next_run_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("analytics_report_schedules")
+}
+
+model PromptTemplate {
+  id          String   @id @default(cuid())
+  workspaceId String   @map("workspace_id")
+  name        String
+  description String?
+  category    String // system, behavior, assistant, user
+  variables   String[] @default([])
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User            @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  versions  PromptVersion[]
+
+  @@map("prompt_templates")
+}
+
+model PromptVersion {
+  id            String   @id @default(cuid())
+  templateId    String   @map("template_id")
+  content       String   @db.Text
+  summary       String?
+  modelProvider String
+  modelName     String
+  temperature   Float
+  maxTokens     Int
+  version       Int
+  createdById   String   @map("created_by_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  template  PromptTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  createdBy User           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  tests     PromptTest[]
+
+  @@unique([templateId, version])
+  @@map("prompt_versions")
+}
+
+model PromptTest {
+  id              String   @id @default(cuid())
+  promptVersionId String   @map("prompt_version_id")
+  chatbotId       String?  @map("chatbot_id")
+  workflowId      String?  @map("workflow_id")
+  status          String   @default("draft")
+  variantKey      String
+  trafficSplit    Float    @default(0.5)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  promptVersion PromptVersion @relation(fields: [promptVersionId], references: [id], onDelete: Cascade)
+  chatbot       Chatbot?      @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  workflow      Workflow?     @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@map("prompt_tests")
+}
+
+model QualityFlag {
+  id             String    @id @default(cuid())
+  messageId      String    @map("message_id")
+  organizationId String    @map("organization_id")
+  workspaceId    String?   @map("workspace_id")
+  chatbotId      String?   @map("chatbot_id")
+  reason         String
+  severity       String // low, medium, high
+  status         String    @default("pending") // pending, reviewed, dismissed
+  reviewerId     String?   @map("reviewer_id")
+  reviewedAt     DateTime? @map("reviewed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  message  Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  reviewer User?   @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@map("quality_flags")
+}
+
+model CostUsage {
+  id               String   @id @default(cuid())
+  organizationId   String   @map("organization_id")
+  chatbotId        String   @map("chatbot_id")
+  conversationId   String?  @map("conversation_id")
+  provider         String
+  model            String
+  promptTokens     Int      @default(0) @map("prompt_tokens")
+  completionTokens Int      @default(0) @map("completion_tokens")
+  totalTokens      Int      @default(0) @map("total_tokens")
+  costUsd          Float    @default(0) @map("cost_usd")
+  recordedAt       DateTime @default(now()) @map("recorded_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  chatbot      Chatbot       @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@map("cost_usage")
+}
+
+model CompliancePolicy {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  region         String // us, eu, apac
+  dataRetention  Json     @default("{}") @map("data_retention")
+  phiHandling    Json     @default("{}") @map("phi_handling")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("compliance_policies")
+}
+
+model DataConsent {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  userId         String    @map("user_id")
+  consentType    String // marketing, analytics, product
+  granted        Boolean   @default(true)
+  grantedAt      DateTime  @default(now()) @map("granted_at")
+  revokedAt      DateTime? @map("revoked_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, consentType])
+  @@map("data_consents")
+}
+
+model DataRetentionSchedule {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  resourceType   String // user_sessions, messages, logs
+  retentionDays  Int
+  nextRunAt      DateTime @map("next_run_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("data_retention_schedules")
+}
+
+model Integration {
+  id             String   @id @default(cuid())
+  workspaceId    String   @map("workspace_id")
+  organizationId String   @map("organization_id")
+  provider       String
+  category       String // crm, helpdesk, calendar, other
+  name           String
+  status         String   @default("draft")
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  workspace    Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  credentials  IntegrationCredential[]
+  webhooks     IntegrationWebhook[]
+  actionLogs   IntegrationActionLog[]
+
+  @@unique([workspaceId, provider])
+  @@map("integrations")
+}
+
+model IntegrationCredential {
+  id              String    @id @default(cuid())
+  integrationId   String    @map("integration_id")
+  encryptedValue  String    @map("encrypted_value") @db.Text
+  tokenType       String?   @map("token_type")
+  expiresAt       DateTime? @map("expires_at")
+  lastRefreshedAt DateTime? @map("last_refreshed_at")
+  metadata        Json      @default("{}")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@map("integration_credentials")
+}
+
+model IntegrationWebhook {
+  id            String   @id @default(cuid())
+  integrationId String   @map("integration_id")
+  url           String
+  events        String[] @default([])
+  secret        String?  @map("secret_token")
+  retries       Int      @default(0)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@map("integration_webhooks")
+}
+
+model IntegrationActionLog {
+  id             String   @id @default(cuid())
+  integrationId  String   @map("integration_id")
+  workspaceId    String   @map("workspace_id")
+  userId         String?  @map("user_id")
+  action         String
+  status         String   @default("pending")
+  requestPayload Json     @default("{}") @map("request_payload")
+  responseBody   Json     @default("{}") @map("response_body")
+  errorMessage   String?  @map("error_message")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("integration_action_logs")
+}

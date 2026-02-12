@@ -29,7 +29,6 @@
     "@repo/ui": "workspace:*",
     "@types/bcryptjs": "^3.0.0",
     "@xyflow/react": "^12.10.0",
-    "argon2": "^0.44.0",
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.4.2",
     "node-html-parser": "^7.0.2",
