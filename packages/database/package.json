@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "prisma generate && tsup src/index.ts --format cjs,esm --dts",
+    "build": "prisma generate && tsup src/index.ts --format cjs,esm --no-dts",
     "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
