@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ["@repo/ui", "@repo/database"],
-  serverExternalPackages: ["argon2"],
   images: {
     remotePatterns: [
       {

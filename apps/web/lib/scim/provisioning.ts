@@ -152,7 +152,7 @@ export async function listUsers(
 
   // Build where clause from filter
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let where: any = {
+  const where: any = {
     memberships: {
       some: { organizationId },
     },
