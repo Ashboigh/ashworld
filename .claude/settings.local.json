@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --version:*)",
+      "Bash(pnpm install:*)",
+      "Bash(echo:*)",
+      "Bash(pnpm config set:*)",
+      "Bash(pnpm --filter web build:*)",
+      "Bash(pnpm --filter web add:*)",
+      "Bash(pnpm --filter @repo/database db:generate:*)",
+      "Bash(pnpm build:*)",
+      "Bash(npm run build:*)",
+      "Bash(timeout:*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(npx next build)",
+      "Bash(curl:*)",
+      "Bash(npx prisma migrate dev:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)"
+    ]
+  }
+}
