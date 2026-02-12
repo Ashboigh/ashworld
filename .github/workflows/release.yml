@@ -1,0 +1,17 @@
+name: Release Deployment
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  prod-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Deploying release to production (placeholder)"
+  post-deploy-tests:
+    needs: prod-deploy
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Running smoke tests against production (placeholder)"

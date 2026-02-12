@@ -1,0 +1,8 @@
+packages:
+  - apps/*
+  - packages/*
+
+enablePrePostScripts: true
+
+ignoredBuiltDependencies:
+  - msgpackr-extract

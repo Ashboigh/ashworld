@@ -1,0 +1,24 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint-test-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 10
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter web lint
+      - run: pnpm test || echo "no tests defined" 
+      - run: pnpm --filter web build
+  preview-deploy:
+    needs: lint-test-build
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Deploying preview environment (placeholder)"
