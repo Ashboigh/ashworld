@@ -5,20 +5,16 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   FileText,
-  Link as LinkIcon,
-  Globe,
   Trash2,
   RefreshCw,
   CheckCircle,
   XCircle,
   Clock,
   Loader2,
-  Eye,
   X,
   ExternalLink,
   Search,
   ChevronRight,
-  MoreVertical,
 } from "lucide-react";
 import { Button, Input } from "@repo/ui";
 
@@ -397,7 +393,7 @@ export function DocumentList({
       {filteredDocuments.length === 0 && searchQuery && (
         <div className="text-center py-8 text-muted-foreground">
           <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">No documents match "{searchQuery}"</p>
+          <p className="text-sm">No documents match &ldquo;{searchQuery}&rdquo;</p>
         </div>
       )}
 

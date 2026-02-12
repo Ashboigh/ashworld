@@ -8,7 +8,7 @@ import { hasPermission, Permission } from "@/lib/permissions";
 import { DocumentUpload } from "@/components/knowledge-base/document-upload";
 import { DocumentList } from "@/components/knowledge-base/document-list";
 import { SearchTest } from "@/components/knowledge-base/search-test";
-import { ChevronLeft, Database, Settings, Plus } from "lucide-react";
+import { ChevronLeft, Database, Settings } from "lucide-react";
 
 interface PageProps {
   params: Promise<{ orgSlug: string; kbId: string }>;

@@ -47,13 +47,14 @@ export async function createIntegrationClient(
     case "salesforce":
       return new SalesforceClient(credentialId);
 
-    case "zendesk":
+    case "zendesk": {
       const subdomain = config.subdomain as string;
       if (!subdomain) {
         console.error("Zendesk subdomain not configured");
         return null;
       }
       return new ZendeskClient(credentialId, subdomain);
+    }
 
     default:
       console.error(`Unknown integration provider: ${integration.provider}`);

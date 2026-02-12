@@ -177,7 +177,7 @@ export async function listUsers(
         }
       } else if (parsed.attribute === "active") {
         // All users in our system are active
-        where = where;
+        // All users in our system are active — no filter needed
       }
     }
   }
@@ -373,7 +373,7 @@ export async function patchUser(
   }
 
   // Process operations
-  let updateData: { name?: string; email?: string } = {};
+  const updateData: { name?: string; email?: string } = {};
   let shouldDeactivate = false;
 
   for (const op of request.Operations) {
@@ -510,7 +510,7 @@ export async function listGroups(
 
   // Build where clause
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let where: any = {
+  const where: any = {
     workspace: { organizationId },
   };
 

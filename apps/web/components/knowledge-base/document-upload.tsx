@@ -13,7 +13,6 @@ import {
   Type,
   HelpCircle,
   File,
-  FileIcon,
   Globe,
 } from "lucide-react";
 import { Button, Input, Label } from "@repo/ui";

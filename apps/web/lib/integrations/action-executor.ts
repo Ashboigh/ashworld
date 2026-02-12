@@ -119,10 +119,11 @@ export async function executeAction(
         break;
 
       // Generic Actions
-      case "integration.test_connection":
+      case "integration.test_connection": {
         const connected = await client.testConnection();
         result = { success: connected, data: { connected } };
         break;
+      }
 
       default:
         return {
